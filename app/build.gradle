@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-	compileSdkVersion 30
+	compileSdk 30
 
 	defaultConfig {
 		applicationId "github.daneren2005.dsub"
@@ -27,16 +27,14 @@ android {
 			minifyEnabled true
 			shrinkResources true
 			proguardFiles 'proguard.cfg'
-			zipAlignEnabled true
 		}
 		fix {
 			minifyEnabled true
 			shrinkResources true
 			proguardFiles 'proguard.cfg'
-			zipAlignEnabled true
 		}
 	}
-	flavorDimensions "version"
+	flavorDimensions = ["version"]
 	productFlavors {
 		floss {
 			// FLOSS build (no proprietary libraries)
