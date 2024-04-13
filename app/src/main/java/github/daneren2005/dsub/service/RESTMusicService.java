@@ -505,6 +505,10 @@ public class RESTMusicService implements MusicService {
     public void scrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception {
         checkServerVersion(context, "1.5", "Scrobbling not supported.");
         Reader reader;
+		Scrobble scrobble = new Scrobble(String.valueOf(Util.getActiveServer(context)), id, time, submission);
+
+		SongDBHandler.getHandler(context).addScrobble(scrobble);
+
         if(time > 0){
         	checkServerVersion(context, "1.8", "Scrobbling with a time not supported.");
         	reader = getReader(context, progressListener, "scrobble", Arrays.asList("id", "submission", "time"), Arrays.<Object>asList(id, submission, time));

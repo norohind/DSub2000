@@ -26,13 +26,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import github.daneren2005.dsub.domain.MusicDirectory;
+import github.daneren2005.dsub.domain.Scrobble;
 import github.daneren2005.dsub.service.DownloadFile;
 
 public class SongDBHandler extends SQLiteOpenHelper {
 	private static final String TAG = SongDBHandler.class.getSimpleName();
 	private static SongDBHandler dbHandler;
 
-	private static final int DATABASE_VERSION = 2;
+	private static final int DATABASE_VERSION = 3;
 	public static final String DATABASE_NAME = "SongsDB";
 
 	public static final String TABLE_SONGS = "RegisteredSongs";
@@ -42,6 +43,10 @@ public class SongDBHandler extends SQLiteOpenHelper {
 	public static final String SONGS_COMPLETE_PATH = "completePath";
 	public static final String SONGS_LAST_PLAYED = "lastPlayed";
 	public static final String SONGS_LAST_COMPLETED = "lastCompleted";
+
+	public static final String SCROBBLES_TABLE = "scrobbles";
+	public static final String SCROBBLES_TIMESTAMP = "timestamp";
+	public static final String SCROBBLES_SUBMISSION = "submission";
 
 	private Context context;
 
@@ -60,14 +65,42 @@ public class SongDBHandler extends SQLiteOpenHelper {
 				SONGS_LAST_PLAYED + " INTEGER, " +
 				SONGS_LAST_COMPLETED + " INTEGER, " +
 				"UNIQUE(" + SONGS_SERVER_KEY + ", " + SONGS_SERVER_ID + "))");
+
+		createScrobblesTable(db);
+	}
+
+	private void createScrobblesTable(SQLiteDatabase db) {
+		db.execSQL("CREATE TABLE " + SCROBBLES_TABLE + " ( " +
+				SONGS_SERVER_KEY + " INTEGER NOT NULL, " +
+				SONGS_SERVER_ID + " TEXT NOT NULL, " +
+				SCROBBLES_TIMESTAMP + " INT, " +
+				SCROBBLES_SUBMISSION + " INTEGER NOT NULL, " +
+				"primary key(" + SONGS_SERVER_KEY + ", " + SONGS_SERVER_ID + ", " + SCROBBLES_TIMESTAMP + ", " + SCROBBLES_SUBMISSION + " ))");
 	}
 
 	@Override
 	public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-		db.execSQL("DROP TABLE IF EXISTS " + TABLE_SONGS);
-		this.onCreate(db);
+		if (oldVersion == 2 && newVersion == 3) {
+			createScrobblesTable(db);
+		}
 	}
 
+	@Override
+	public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+		if (oldVersion == 3 && newVersion == 2) {
+			db.execSQL("drop table " + SCROBBLES_TABLE + ";");
+		}
+	}
+
+	public synchronized void addScrobble(Scrobble scrobble) {
+		ContentValues values = new ContentValues();
+		values.put(SONGS_SERVER_KEY, scrobble.getServerKey());
+		values.put(SONGS_SERVER_ID, scrobble.getServerId());
+		values.put(SCROBBLES_TIMESTAMP, scrobble.getTime());
+		values.put(SCROBBLES_SUBMISSION, scrobble.isSubmission());
+		SQLiteDatabase db = getWritableDatabase();
+		db.insert(SCROBBLES_TABLE, null, values);
+	}
 	public synchronized void addSong(DownloadFile downloadFile) {
 		addSong(Util.getMostRecentActiveServer(context), downloadFile);
 	}
