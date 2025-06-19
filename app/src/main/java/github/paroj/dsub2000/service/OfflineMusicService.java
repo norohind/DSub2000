@@ -54,6 +54,7 @@ import github.paroj.dsub2000.domain.SearchCritera;
 import github.paroj.dsub2000.domain.SearchResult;
 import github.paroj.dsub2000.domain.Share;
 import github.paroj.dsub2000.domain.User;
+import github.paroj.dsub2000.domain.Scrobble;
 import github.paroj.dsub2000.util.Constants;
 import github.paroj.dsub2000.util.FileUtil;
 import github.paroj.dsub2000.util.Pair;
@@ -534,37 +535,24 @@ public class OfflineMusicService implements MusicService {
     }
 
     @Override
-    public void scrobble(String id, boolean submission, Context context, ProgressListener progressListener) throws Exception {
-		if(!submission) {
-			return;
-		}
+    public void storeScrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception {
+		String serverKey = String.valueOf(Util.getActiveServer(context));
 
 		SharedPreferences prefs = Util.getPreferences(context);
 		String cacheLocn = prefs.getString(Constants.PREFERENCES_KEY_CACHE_LOCATION, null);
 
-		SharedPreferences offline = Util.getOfflineSync(context);
-		int scrobbles = offline.getInt(Constants.OFFLINE_SCROBBLE_COUNT, 0);
-		scrobbles++;
-		SharedPreferences.Editor offlineEditor = offline.edit();
-		
-		if(id.indexOf(cacheLocn) != -1) {
+		if(id.contains(cacheLocn)) {
 			Pair<Integer, String> cachedSongId = SongDBHandler.getHandler(context).getIdFromPath(id.replace(".complete", ""));
 			if(cachedSongId != null) {
-				offlineEditor.putString(Constants.OFFLINE_SCROBBLE_ID + scrobbles, cachedSongId.getSecond());
-				offlineEditor.remove(Constants.OFFLINE_SCROBBLE_SEARCH + scrobbles);
+				id = cachedSongId.getSecond();
+
 			} else {
-				String scrobbleSearchCriteria = Util.parseOfflineIDSearch(context, id, cacheLocn);
-				offlineEditor.putString(Constants.OFFLINE_SCROBBLE_SEARCH + scrobbles, scrobbleSearchCriteria);
-				offlineEditor.remove(Constants.OFFLINE_SCROBBLE_ID + scrobbles);
+                id = Util.parseOfflineIDSearch(context, id, cacheLocn);
 			}
-		} else {
-			offlineEditor.putString(Constants.OFFLINE_SCROBBLE_ID + scrobbles, id);
-			offlineEditor.remove(Constants.OFFLINE_SCROBBLE_SEARCH + scrobbles);
 		}
-		
-		offlineEditor.putLong(Constants.OFFLINE_SCROBBLE_TIME + scrobbles, System.currentTimeMillis());
-		offlineEditor.putInt(Constants.OFFLINE_SCROBBLE_COUNT, scrobbles);
-		offlineEditor.commit();
+
+		Scrobble scrobble = new Scrobble(serverKey, id, time, submission);
+		SongDBHandler.getHandler(context).storeOrUpdateScrobble(scrobble);
     }
 
     @Override

@@ -87,7 +87,7 @@ public interface MusicService {
 
     Lyrics getLyrics(String artist, String title, Context context, ProgressListener progressListener) throws Exception;
 
-    void scrobble(String id, boolean submission, Context context, ProgressListener progressListener) throws Exception;
+    void storeScrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception;
 
     MusicDirectory getAlbumList(String type, int size, int offset, boolean refresh, Context context, ProgressListener progressListener) throws Exception;
 

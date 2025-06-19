@@ -527,27 +527,40 @@ public class RESTMusicService implements MusicService {
         }
     }
 
-    @Override
-    public void scrobble(String id, boolean submission, Context context, ProgressListener progressListener) throws Exception {
+    public void storeScrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception {
 		id = getOfflineSongId(id, context, progressListener);
-		scrobble(id, submission, 0, context, progressListener);
+		String serverKey = String.valueOf(Util.getActiveServer(context));
+		Scrobble scrobble = new Scrobble(serverKey, id, time, submission);
+		SongDBHandler.getHandler(context).storeOrUpdateScrobble(scrobble);
+
+		new SilentBackgroundTask<Integer>(context) {
+			@Override
+			protected Integer doInBackground() throws Throwable {
+				processOfflineScrobbles(context, progressListener, true);
+				return 0;
+			}
+
+		}.execute();
     }
 
-    public void scrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception {
+	public void sendScrobble(Context context, Scrobble scrobble, ProgressListener progressListener) throws Exception{
         checkServerVersion(context, "1.5", "Scrobbling not supported.");
         Reader reader;
-        if(time > 0){
+        if(scrobble.getTime() > 0){
         	checkServerVersion(context, "1.8", "Scrobbling with a time not supported.");
-        	reader = getReader(context, progressListener, "scrobble", Arrays.asList("id", "submission", "time"), Arrays.<Object>asList(id, submission, time));
+        	reader = getReader(context, progressListener, "scrobble", Arrays.asList("id", "submission", "time"), Arrays.<Object>asList(scrobble.getSongServerId(), scrobble.isSubmission(), scrobble.getTime()));
         }
         else
-        	reader = getReader(context, progressListener, "scrobble", Arrays.asList("id", "submission"), Arrays.<Object>asList(id, submission));
+			reader = getReader(context, progressListener, "scrobble", Arrays.asList("id", "submission"), Arrays.<Object>asList(scrobble.getSongServerId(), scrobble.isSubmission()));
         try {
-            new ErrorParser(context, getInstance(context)).parse(reader);
-        } finally {
-            Util.close(reader);
+			new ErrorParser(context, getInstance(context)).parse(reader);
+			Util.close(reader);
+		} catch (Exception ex) {
+			Log.w("scrobble", "Exception during scrobble submission. song id: " + scrobble.getSongServerId(), ex);
+			Util.close(reader);
+			throw ex;
         }
-    }
+	}
 
     @Override
     public MusicDirectory getAlbumList(String type, int size, int offset, boolean refresh, Context context, ProgressListener progressListener) throws Exception {
@@ -1657,44 +1670,28 @@ public class RESTMusicService implements MusicService {
 
 	@Override
 	public int processOfflineSyncs(final Context context, final ProgressListener progressListener) throws Exception{
-		return processOfflineScrobbles(context, progressListener) + processOfflineStars(context, progressListener);
+		return processOfflineScrobbles(context, progressListener, false) + processOfflineStars(context, progressListener);
 	}
 
-	public int processOfflineScrobbles(final Context context, final ProgressListener progressListener) throws Exception {
-		SharedPreferences offline = Util.getOfflineSync(context);
-		SharedPreferences.Editor offlineEditor = offline.edit();
-		int count = offline.getInt(Constants.OFFLINE_SCROBBLE_COUNT, 0);
-		int retry = 0;
-		for(int i = 1; i <= count; i++) {
+	public int processOfflineScrobbles(final Context context, final ProgressListener progressListener, boolean onlyNew) {
+		SongDBHandler dbHandler = SongDBHandler.getHandler(context);
+		int successCounter = 0;
+		for (Scrobble scrobble: dbHandler.getScrobbles(onlyNew)) {
 			try {
-				String id = offline.getString(Constants.OFFLINE_SCROBBLE_ID + i, null);
-				long time = offline.getLong(Constants.OFFLINE_SCROBBLE_TIME + i, 0);
-				if(id != null) {
-					scrobble(id, true, time, context, progressListener);
-				} else {
-					String search = offline.getString(Constants.OFFLINE_SCROBBLE_SEARCH + i, "");
-					SearchCritera critera = new SearchCritera(search, 0, 0, 1);
-					SearchResult result = searchNew(critera, context, progressListener);
-					if(result.getSongs().size() == 1){
-						Log.i(TAG, "Query '" + search + "' returned song " + result.getSongs().get(0).getTitle() + " by " + result.getSongs().get(0).getArtist() + " with id " + result.getSongs().get(0).getId());
-						Log.i(TAG, "Scrobbling " + result.getSongs().get(0).getId() + " with time " + time);
-						scrobble(result.getSongs().get(0).getId(), true, time, context, progressListener);
-					}
-					else{
-						throw new Exception("Song not found on server");
-					}
-				}
-			}
-			catch(Exception e){
-				Log.e(TAG, e.toString());
-				retry++;
+				sendScrobble(context, scrobble, progressListener);
+				dbHandler.deleteScrobble(scrobble.getTime());
+				Log.d("scrobble", "Successfully sent scrobble for: " + scrobble.getSongServerId());
+				successCounter++;
+
+			} catch (Exception e) {
+				Log.w("scrobble", "Failed to scrobble for: " + scrobble.getSongServerId(), e);
+				scrobble.setLastAttempt(System.currentTimeMillis());
+				scrobble.setLastAttemptReason(e.toString());
+				scrobble.setRetries(scrobble.getRetries() + 1);
+				dbHandler.storeOrUpdateScrobble(scrobble);
 			}
 		}
-
-		offlineEditor.putInt(Constants.OFFLINE_SCROBBLE_COUNT, 0);
-		offlineEditor.commit();
-
-		return count - retry;
+		return successCounter;
 	}
 
 	public int processOfflineStars(final Context context, final ProgressListener progressListener) throws Exception {
@@ -1745,7 +1742,8 @@ public class RESTMusicService implements MusicService {
 	private String getOfflineSongId(String id, Context context, ProgressListener progressListener) throws Exception {
 		SharedPreferences prefs = Util.getPreferences(context);
 		String cacheLocn = prefs.getString(Constants.PREFERENCES_KEY_CACHE_LOCATION, null);
-		if(cacheLocn != null && id.indexOf(cacheLocn) != -1) {
+		id = id.replace(".complete", "");
+		if(cacheLocn != null && id.contains(cacheLocn)) {
 			Pair<Integer, String> cachedSongId = SongDBHandler.getHandler(context).getIdFromPath(Util.getRestUrlHash(context, getInstance(context)), id);
 			if(cachedSongId != null) {
 				id = cachedSongId.getSecond();

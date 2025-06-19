@@ -26,13 +26,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import github.paroj.dsub2000.domain.MusicDirectory;
+import github.paroj.dsub2000.domain.Scrobble;
 import github.paroj.dsub2000.service.DownloadFile;
 
 public class SongDBHandler extends SQLiteOpenHelper {
 	private static final String TAG = SongDBHandler.class.getSimpleName();
 	private static SongDBHandler dbHandler;
 
-	private static final int DATABASE_VERSION = 2;
+	private static final int DATABASE_VERSION = 3;
 	public static final String DATABASE_NAME = "SongsDB";
 
 	public static final String TABLE_SONGS = "RegisteredSongs";
@@ -42,6 +43,30 @@ public class SongDBHandler extends SQLiteOpenHelper {
 	public static final String SONGS_COMPLETE_PATH = "completePath";
 	public static final String SONGS_LAST_PLAYED = "lastPlayed";
 	public static final String SONGS_LAST_COMPLETED = "lastCompleted";
+	public static final String SCROBBLES_TIME = "time";
+	public static final String SCROBBLES_IS_SUBMISSION = "isSubmission";
+	public static final String SCROBBLES_RETIRES = "retries";
+	public static final String SCROBBLES_LAST_ATTEMPT_AT = "lastAttemptAt";
+	public static final String SCROBBLES_LAST_ATTEMPT_REASON = "lastAttemptReason";
+
+	public static final String SONGS_TABLE_SQL = "CREATE TABLE " + TABLE_SONGS + " ( " +
+				SONGS_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+				SONGS_SERVER_KEY + " INTEGER NOT NULL, " +
+				SONGS_SERVER_ID + " TEXT NOT NULL, " +
+				SONGS_COMPLETE_PATH + " TEXT NOT NULL, " +
+				SONGS_LAST_PLAYED + " INTEGER, " +
+				SONGS_LAST_COMPLETED + " INTEGER, " +
+				"UNIQUE(" + SONGS_SERVER_KEY + ", " + SONGS_SERVER_ID + "))";
+
+	public static final String TABLE_SCROBBLES = "Scrobbles";
+	public static final String SCROBBLES_TABLE_SQL = "CREATE TABLE " + TABLE_SCROBBLES + " (" +
+				SONGS_SERVER_KEY + " TEXT NOT NULL, " +
+				SONGS_SERVER_ID + " INTEGER NOT NULL, " +
+				SCROBBLES_TIME + " INT PRIMARY KEY, " +
+				SCROBBLES_IS_SUBMISSION + " BOOL NOT NULL, " +
+				SCROBBLES_RETIRES + " INT NOT NULL DEFAULT 0, " +
+				SCROBBLES_LAST_ATTEMPT_AT + " INT, " +
+				SCROBBLES_LAST_ATTEMPT_REASON + " TEXT);";
 
 	private Context context;
 
@@ -52,22 +77,78 @@ public class SongDBHandler extends SQLiteOpenHelper {
 
 	@Override
 	public void onCreate(SQLiteDatabase db) {
-		db.execSQL("CREATE TABLE " + TABLE_SONGS + " ( " +
-				SONGS_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
-				SONGS_SERVER_KEY + " INTEGER NOT NULL, " +
-				SONGS_SERVER_ID + " TEXT NOT NULL, " +
-				SONGS_COMPLETE_PATH + " TEXT NOT NULL, " +
-				SONGS_LAST_PLAYED + " INTEGER, " +
-				SONGS_LAST_COMPLETED + " INTEGER, " +
-				"UNIQUE(" + SONGS_SERVER_KEY + ", " + SONGS_SERVER_ID + "))");
+		db.execSQL(SONGS_TABLE_SQL);
+		db.execSQL(SCROBBLES_TABLE_SQL);
 	}
 
 	@Override
 	public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-		db.execSQL("DROP TABLE IF EXISTS " + TABLE_SONGS);
-		this.onCreate(db);
+		if (oldVersion == 2 && newVersion == 3) {
+			db.execSQL(SCROBBLES_TABLE_SQL);
+		}
 	}
 
+	public synchronized void storeOrUpdateScrobble(Scrobble scrobble) {
+		SQLiteDatabase db = this.getWritableDatabase();
+		ContentValues values = new ContentValues();
+
+		values.put(SONGS_SERVER_KEY, scrobble.getServerKey());
+		values.put(SONGS_SERVER_ID, scrobble.getSongServerId());
+		values.put(SCROBBLES_TIME, scrobble.getTime());
+		values.put(SCROBBLES_IS_SUBMISSION, scrobble.isSubmission());
+		values.put(SCROBBLES_RETIRES, scrobble.getRetries());
+
+		if (scrobble.getLastAttempt() != 0) {
+			values.put(SCROBBLES_LAST_ATTEMPT_AT, scrobble.getLastAttempt());
+		}
+
+		if (scrobble.getLastAttemptReason() != null) {
+			values.put(SCROBBLES_LAST_ATTEMPT_REASON, scrobble.getLastAttemptReason());
+		}
+
+		db.insertWithOnConflict(TABLE_SCROBBLES, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+		db.close();
+	}
+
+	public synchronized ArrayList<Scrobble> getScrobbles(boolean onlyNew) {
+		SQLiteDatabase db = this.getReadableDatabase();
+		String[] columns = {
+				SONGS_SERVER_KEY,
+				SONGS_SERVER_ID,
+				SCROBBLES_TIME,
+				SCROBBLES_IS_SUBMISSION,
+				SCROBBLES_RETIRES,
+				SCROBBLES_LAST_ATTEMPT_AT,
+				SCROBBLES_LAST_ATTEMPT_REASON
+		};
+		String condition;
+		if (onlyNew) {
+			condition = SCROBBLES_RETIRES + " = 0";
+		} else {
+			condition = null;
+		}
+		ArrayList<Scrobble> toReturn = new ArrayList<>();
+		Cursor cursor = db.query(TABLE_SCROBBLES, columns, condition, new String[] {}, null, null, SCROBBLES_TIME);
+		while (cursor.moveToNext()) {
+			Scrobble scrobble = new Scrobble(
+					cursor.getString(0),
+					cursor.getString(1),
+					cursor.getLong(2),
+					cursor.getInt(3) != 0
+			);
+			scrobble.setRetries(cursor.getInt(4));
+			scrobble.setLastAttempt(cursor.getLong(5));
+			scrobble.setLastAttemptReason(cursor.getString(6));
+			toReturn.add(scrobble);
+		}
+		db.close();
+		return toReturn;
+	}
+	public synchronized void deleteScrobble(long time) {
+		SQLiteDatabase db = dbHandler.getWritableDatabase();
+		db.delete(TABLE_SCROBBLES, SCROBBLES_TIME + " = ?", new String[] {String.valueOf(time)});
+		db.close();
+	}
 	public synchronized void addSong(DownloadFile downloadFile) {
 		addSong(Util.getMostRecentActiveServer(context), downloadFile);
 	}

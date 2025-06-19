@@ -521,8 +521,8 @@ public class CachedMusicService implements MusicService {
     }
 
     @Override
-    public void scrobble(String id, boolean submission, Context context, ProgressListener progressListener) throws Exception {
-        musicService.scrobble(id, submission, context, progressListener);
+    public void storeScrobble(String id, boolean submission, long time, Context context, ProgressListener progressListener) throws Exception {
+        musicService.storeScrobble(id, submission, time, context, progressListener);
     }
 
 	@Override

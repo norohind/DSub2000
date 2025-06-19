@@ -39,6 +39,7 @@ public class Scrobbler {
 		}
 
 		final String id = song.getSong().getId();
+		final long time = System.currentTimeMillis();
 		// Avoid duplicate registrations.
 		if (submission && id.equals(lastSubmission)) {
 			return;
@@ -64,10 +65,6 @@ public class Scrobbler {
 				if (!Util.isScrobblingEnabled(context)) {
 					return null;
 				}
-				// Ignore if online with no network access
-				else if(!Util.isOffline(context) && !Util.isNetworkConnected(context)) {
-					return null;
-				}
 				// Ignore podcasts
 				else if(song.getSong() instanceof PodcastEpisode || song.getSong() instanceof InternetRadioStation) {
 					return null;
@@ -81,10 +78,10 @@ public class Scrobbler {
 
 				MusicService service = MusicServiceFactory.getMusicService(context);
 				try {
-					service.scrobble(id, submission, context, null);
-					Log.i(TAG, "Scrobbled '" + (submission ? "submission" : "now playing") + "' for " + song);
+					service.storeScrobble(id, submission, time, context, null);
+					Log.i(TAG, "Stored scrobble '" + (submission ? "submission" : "now playing") + "' for " + song);
 				} catch (Exception x) {
-					Log.i(TAG, "Failed to scrobble'" + (submission ? "submission" : "now playing") + "' for " + song, x);
+					Log.i(TAG, "Failed to store scrobble'" + (submission ? "submission" : "now playing") + "' for " + song, x);
 				}
 				return null;
 			}

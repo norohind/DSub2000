@@ -536,8 +536,7 @@ public final class Util {
 	}
 	
 	public static int offlineScrobblesCount(Context context) {
-		SharedPreferences offline = getOfflineSync(context);
-		return offline.getInt(Constants.OFFLINE_SCROBBLE_COUNT, 0);
+		return SongDBHandler.getHandler(context).getScrobbles(false).size();
 	}
 	public static int offlineStarsCount(Context context) {
 		SharedPreferences offline = getOfflineSync(context);
